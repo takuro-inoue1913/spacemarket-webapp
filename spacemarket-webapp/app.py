@@ -8,15 +8,12 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 import time
 import os
-import json
 from datetime import datetime
 import threading
 
@@ -196,42 +193,28 @@ class SpaceMarketScraper:
     def scrape_favorite_list_page(self):
         """お気に入り詳細ページをスクレイプ"""
         try:
-            # FavoriteCardListItem 要素を全て取得
-            cards = self.driver.find_elements(By.XPATH, '//*[contains(@class, "FavoriteCardListItem")]')
+            # FavoriteCardListPresenter__StyledListItem 要素を全て取得
+            cards = self.driver.find_elements(By.XPATH, '//*[starts-with(@class, "FavoriteCardListPresenter__StyledListItem-")]')
             
             scraping_status['message'] = f'{len(cards)}件のスペースを検出...'
             
             for card in cards:
                 try:
-                    # タイトル
-                    title_elem = card.find_elements(By.XPATH, './/*[starts-with(@class, "FavoriteCardListItem__Title")]')
-                    title = title_elem[0].text.strip() if title_elem else ''
-                    
-                    # レビュー点数
-                    score_elem = card.find_elements(By.XPATH, './/*[starts-with(@class, "FavoriteCardListItem__ReputationScoreWrap")]')
-                    score = score_elem[0].text.strip() if score_elem else ''
-                    
-                    # 金額
-                    price_elem = card.find_elements(By.XPATH, './/*[starts-with(@class, "FavoriteCardListItem__Time")]')
-                    price = price_elem[0].text.strip() if price_elem else ''
+                    # カード全体のテキストを取得
+                    full_text = card.text.strip()
                     
                     # URL
                     link_elem = card.find_elements(By.CSS_SELECTOR, 'a[href*="/spaces/"]')
                     url = link_elem[0].get_attribute('href') if link_elem else ''
                     
-                    # 画像URL
-                    img_elem = card.find_elements(By.TAG_NAME, 'img')
-                    image_url = img_elem[0].get_attribute('src') if img_elem else ''
+                    # タイトル（最初の行または最も大きなテキスト）
+                    title = full_text.split('\n')[0] if full_text else 'タイトルなし'
                     
-                    if title or url:
+                    if url:
                         self.favorites.append({
-                            'スペース名': title or 'タイトルなし',
-                            '価格': price,
-                            'レビュー点数': score,
-                            '所在地': '',
-                            'カテゴリ': '',
+                            'スペース名': title,
                             'URL': url,
-                            '画像URL': image_url
+                            '全テキスト': full_text
                         })
                         
                 except Exception as e:
@@ -280,29 +263,14 @@ class SpaceMarketScraper:
                         if title:
                             break
                     
-                    # 価格を取得
-                    price = ''
-                    text_content = parent.text
-                    import re
-                    price_match = re.search(r'¥[\d,]+', text_content)
-                    if price_match:
-                        price = price_match.group(0)
-                    
-                    # 画像URL
-                    image_url = ''
-                    imgs = parent.find_elements(By.TAG_NAME, 'img')
-                    if imgs:
-                        image_url = imgs[0].get_attribute('src') or ''
+                    # 全テキスト取得
+                    full_text = parent.text.strip()
                     
                     if title or url:
                         self.favorites.append({
                             'スペース名': title or 'タイトルなし',
-                            '価格': price,
-                            'レビュー点数': '',
-                            '所在地': '',
-                            'カテゴリ': '',
                             'URL': url,
-                            '画像URL': image_url
+                            '全テキスト': full_text
                         })
                         
                 except Exception as e:
@@ -325,7 +293,18 @@ class SpaceMarketScraper:
                 raise Exception('収集されたデータがありません')
             
             df = pd.DataFrame(self.favorites)
-            df.to_excel(filename, index=False, engine='openpyxl')
+            
+            # Excelファイルに書き込み
+            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='お気に入り')
+                
+                # ワークシートを取得
+                worksheet = writer.sheets['お気に入り']
+                
+                # 列幅を設定
+                worksheet.column_dimensions['A'].width = 50  # スペース名
+                worksheet.column_dimensions['B'].width = 60  # URL
+                worksheet.column_dimensions['C'].width = 80  # 全テキスト
             
             scraping_status['message'] = f'{len(self.favorites)}件のデータを保存しました！'
             return filename
