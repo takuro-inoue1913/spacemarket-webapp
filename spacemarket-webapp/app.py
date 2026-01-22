@@ -42,24 +42,19 @@ class SpaceMarketScraper:
     def setup_driver(self):
         """Chromeドライバーのセットアップ"""
         options = Options()
-        
         if self.headless:
             options.add_argument('--headless')
-        
         # 安定性向上のためのオプション
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1000,900')
-        
         # Mac ARM64用の修正
         try:
             # ChromeDriverを自動インストール
             from webdriver_manager.chrome import ChromeDriverManager
             from webdriver_manager.core.os_manager import ChromeType
-            
             driver_path = ChromeDriverManager().install()
-            
             # パスに 'chromedriver' という実行ファイルが含まれているか確認
             if 'THIRD_PARTY_NOTICES' in driver_path or not driver_path.endswith('chromedriver'):
                 # 正しいchromedriverを探す
@@ -69,16 +64,13 @@ class SpaceMarketScraper:
                     if file == 'chromedriver' and os.access(os.path.join(driver_dir, file), os.X_OK):
                         driver_path = os.path.join(driver_dir, file)
                         break
-            
             service = Service(driver_path)
             self.driver = webdriver.Chrome(service=service, options=options)
-            
         except Exception as e:
             print(f"ChromeDriverの自動インストールに失敗: {e}")
             print("システムのChromeDriverを使用します...")
             # フォールバック: システムのchromedriver
             self.driver = webdriver.Chrome(options=options)
-        
         self.driver.implicitly_wait(10)
         
     def login(self):
@@ -89,35 +81,26 @@ class SpaceMarketScraper:
             scraping_status['message'] = 'ログインページにアクセス中...'
             self.driver.get('https://www.spacemarket.com/login')
             time.sleep(2)
-            
             scraping_status['message'] = 'ログイン情報を入力中...'
-            
             # メールアドレス入力
             email_input = self.driver.find_element(By.NAME, 'email')
             email_input.clear()
             email_input.send_keys(self.email)
-            
             # パスワード入力
             password_input = self.driver.find_element(By.NAME, 'password')
             password_input.clear()
             password_input.send_keys(self.password)
-            
             scraping_status['message'] = 'ログインボタンをクリック中...'
-            
             # ログインボタンをクリック
             login_button = self.driver.find_element(By.CSS_SELECTOR, 'input[type="submit"]')
             login_button.click()
-            
             # ログイン完了を待つ
             time.sleep(3)
-            
             # ログイン成功を確認
             if 'login' in self.driver.current_url:
                 raise Exception('ログインに失敗しました。メールアドレスとパスワードを確認してください。')
-            
             scraping_status['message'] = 'ログイン成功！'
             return True
-            
         except Exception as e:
             scraping_status['error'] = f'ログインエラー: {str(e)}'
             raise
@@ -128,15 +111,12 @@ class SpaceMarketScraper:
         
         try:
             scraping_status['message'] = 'お気に入りページに移動中...'
-            
             # お気に入りページのURLを直接開く
             # 注: 実際のURLは要確認
             self.driver.get('https://www.spacemarket.com/dashboard/favorite_lists/')
             time.sleep(3)
-            
             scraping_status['message'] = 'お気に入りページを読み込み中...'
             return True
-            
         except Exception as e:
             scraping_status['error'] = f'ページ移動エラー: {str(e)}'
             raise
@@ -152,40 +132,30 @@ class SpaceMarketScraper:
         
         try:
             scraping_status['message'] = 'データを収集中...'
-            
             # MainContents を探す
             main_contents = self.find_element_by_class_prefix('MainContents_')
-            
             if not main_contents:
                 # フォールバック: 直接スペースリンクを探す
                 scraping_status['message'] = 'お気に入りスペースを検出中...'
                 return self.scrape_current_page()
-            
             # お気に入りリストのリンクを取得
             favorite_links = main_contents.find_elements(By.CSS_SELECTOR, 'a[href*="/favorite_lists/"]')
-            
             if not favorite_links:
                 # 現在のページを直接スクレイプ
                 return self.scrape_current_page()
-            
             # 各お気に入りリストを処理
             for i, link in enumerate(favorite_links):
                 scraping_status['current'] = i + 1
                 scraping_status['total'] = len(favorite_links)
                 scraping_status['message'] = f'お気に入りリスト {i+1}/{len(favorite_links)} を処理中...'
-                
                 list_url = link.get_attribute('href')
                 self.driver.get(list_url)
                 time.sleep(2)
-                
                 self.scrape_favorite_list_page()
-            
             # 現在のページもスクレイプ
             if not self.favorites:
                 self.scrape_current_page()
-            
             return self.favorites
-            
         except Exception as e:
             scraping_status['error'] = f'データ収集エラー: {str(e)}'
             raise
@@ -195,32 +165,25 @@ class SpaceMarketScraper:
         try:
             # FavoriteCardListPresenter__StyledListItem 要素を全て取得
             cards = self.driver.find_elements(By.XPATH, '//*[starts-with(@class, "FavoriteCardListPresenter__StyledListItem-")]')
-            
             scraping_status['message'] = f'{len(cards)}件のスペースを検出...'
-            
             for card in cards:
                 try:
                     # カード全体のテキストを取得
                     full_text = card.text.strip()
-                    
                     # URL
                     link_elem = card.find_elements(By.CSS_SELECTOR, 'a[href*="/spaces/"]')
                     url = link_elem[0].get_attribute('href') if link_elem else ''
-                    
                     # タイトル（最初の行または最も大きなテキスト）
                     title = full_text.split('\n')[0] if full_text else 'タイトルなし'
-                    
                     if url:
                         self.favorites.append({
                             'スペース名': title,
                             'URL': url,
                             '全テキスト': full_text
                         })
-                        
                 except Exception as e:
                     print(f'カード処理エラー: {e}')
                     continue
-                    
         except Exception as e:
             print(f'ページスクレイプエラー: {e}')
     
@@ -228,29 +191,22 @@ class SpaceMarketScraper:
         """現在のページを汎用的にスクレイプ（フォールバック）"""
         try:
             scraping_status['message'] = '汎用スクレイピングモードで収集中...'
-            
             # スペースへのリンクを全て取得
             space_links = self.driver.find_elements(By.CSS_SELECTOR, 'a[href*="/spaces/"]')
-            
             scraping_status['total'] = len(space_links)
             processed_urls = set()
-            
             for i, link in enumerate(space_links):
                 scraping_status['current'] = i + 1
                 scraping_status['progress'] = int((i + 1) / len(space_links) * 100)
-                
                 try:
                     url = link.get_attribute('href')
-                    
                     if url in processed_urls:
                         continue
                     processed_urls.add(url)
-                    
                     # 親要素を取得
                     parent = link
                     for _ in range(5):
                         parent = parent.find_element(By.XPATH, '..')
-                    
                     # タイトルを取得
                     title = ''
                     for tag in ['h2', 'h3', 'h4']:
@@ -262,22 +218,17 @@ class SpaceMarketScraper:
                                 break
                         if title:
                             break
-                    
                     # 全テキスト取得
                     full_text = parent.text.strip()
-                    
                     if title or url:
                         self.favorites.append({
                             'スペース名': title or 'タイトルなし',
                             'URL': url,
                             '全テキスト': full_text
                         })
-                        
                 except Exception as e:
                     continue
-            
             return self.favorites
-            
         except Exception as e:
             scraping_status['error'] = f'汎用スクレイピングエラー: {str(e)}'
             raise
@@ -288,27 +239,20 @@ class SpaceMarketScraper:
         
         try:
             scraping_status['message'] = 'Excelファイルを生成中...'
-            
             if not self.favorites:
                 raise Exception('収集されたデータがありません')
-            
             df = pd.DataFrame(self.favorites)
-            
             # Excelファイルに書き込み
             with pd.ExcelWriter(filename, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='お気に入り')
-                
                 # ワークシートを取得
                 worksheet = writer.sheets['お気に入り']
-                
                 # 列幅を設定
                 worksheet.column_dimensions['A'].width = 50  # スペース名
                 worksheet.column_dimensions['B'].width = 60  # URL
                 worksheet.column_dimensions['C'].width = 80  # 全テキスト
-            
             scraping_status['message'] = f'{len(self.favorites)}件のデータを保存しました！'
             return filename
-            
         except Exception as e:
             scraping_status['error'] = f'Excel保存エラー: {str(e)}'
             raise
@@ -328,18 +272,14 @@ def index():
 def start_scrape():
     """スクレイピング開始"""
     global scraping_status
-    
     if scraping_status['is_running']:
         return jsonify({'error': '既に実行中です'}), 400
-    
     data = request.json
     email = data.get('email')
     password = data.get('password')
     headless = data.get('headless', False)
-    
     if not email or not password:
         return jsonify({'error': 'メールアドレスとパスワードを入力してください'}), 400
-    
     # ステータスをリセット
     scraping_status = {
         'is_running': True,
@@ -349,7 +289,6 @@ def start_scrape():
         'current': 0,
         'error': None
     }
-    
     # バックグラウンドでスクレイピングを実行
     thread = threading.Thread(target=run_scraping, args=(email, password, headless))
     thread.daemon = True
@@ -360,38 +299,29 @@ def start_scrape():
 def run_scraping(email, password, headless):
     """スクレイピング実行"""
     global scraping_status
-    
     scraper = None
     try:
         scraper = SpaceMarketScraper(email, password, headless)
-        
         # ドライバーセットアップ
         scraping_status['message'] = 'ブラウザを起動中...'
         scraper.setup_driver()
-        
         # ログイン
         scraper.login()
-        
         # お気に入りページに移動
         scraper.navigate_to_favorites()
-        
         # データ収集
         scraper.scrape_favorites()
-        
         # Excel保存
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'spacemarket_favorites_{timestamp}.xlsx'
         filepath = os.path.join('static', filename)
         scraper.save_to_excel(filepath)
-        
         scraping_status['progress'] = 100
         scraping_status['message'] = '完了！ダウンロードボタンをクリックしてください。'
         scraping_status['download_url'] = f'/download/{filename}'
-        
     except Exception as e:
         scraping_status['error'] = str(e)
         scraping_status['message'] = 'エラーが発生しました'
-        
     finally:
         if scraper:
             scraper.close()
@@ -423,7 +353,6 @@ def download_file(filename):
 if __name__ == '__main__':
     # staticフォルダを作成
     os.makedirs('static', exist_ok=True)
-    
     print('=' * 50)
     print('スペースマーケット お気に入り収集ツール')
     print('=' * 50)
@@ -431,6 +360,5 @@ if __name__ == '__main__':
     print('http://localhost:8080')
     print('\n終了するには Ctrl+C を押してください')
     print('=' * 50)
-    
     # Webサーバー起動
     app.run(debug=True, host='0.0.0.0', port=8080)
