@@ -14,6 +14,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 import time
 import os
+import io
 from datetime import datetime
 import threading
 
@@ -27,6 +28,12 @@ scraping_status = {
     'total': 0,
     'current': 0,
     'error': None
+}
+
+# メモリ上のExcelデータを保持
+excel_data = {
+    'content': None,
+    'filename': None
 }
 
 class SpaceMarketScraper:
@@ -298,7 +305,7 @@ def start_scrape():
 
 def run_scraping(email, password, headless):
     """スクレイピング実行"""
-    global scraping_status
+    global scraping_status, excel_data
     scraper = None
     try:
         scraper = SpaceMarketScraper(email, password, headless)
@@ -311,11 +318,13 @@ def run_scraping(email, password, headless):
         scraper.navigate_to_favorites()
         # データ収集
         scraper.scrape_favorites()
-        # Excel保存
+        # Excel生成（メモリ上）
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'spacemarket_favorites_{timestamp}.xlsx'
-        filepath = os.path.join('static', filename)
-        scraper.save_to_excel(filepath)
+        excel_content = scraper.save_to_excel()
+        # グローバル変数に保存
+        excel_data['content'] = excel_content
+        excel_data['filename'] = filename
         scraping_status['progress'] = 100
         scraping_status['message'] = '完了！ダウンロードボタンをクリックしてください。'
         scraping_status['download_url'] = f'/download/{filename}'
@@ -345,14 +354,18 @@ def get_status():
 @app.route('/download/<filename>')
 def download_file(filename):
     """ファイルダウンロード"""
-    filepath = os.path.join('static', filename)
-    if os.path.exists(filepath):
-        return send_file(filepath, as_attachment=True)
+    global excel_data
+    if excel_data['content'] and excel_data['filename'] == filename:
+        excel_data['content'].seek(0)
+        return send_file(
+            excel_data['content'],
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
     return 'ファイルが見つかりません', 404
 
 if __name__ == '__main__':
-    # staticフォルダを作成
-    os.makedirs('static', exist_ok=True)
     print('=' * 50)
     print('スペースマーケット お気に入り収集ツール')
     print('=' * 50)
