@@ -241,7 +241,7 @@ class SpaceMarketScraper:
             raise
     
     def save_to_excel(self, filename='spacemarket_favorites.xlsx'):
-        """Excelファイルに保存"""
+        """Excelファイルに保存（メモリ上のBytesIOオブジェクトを返す）"""
         global scraping_status
         
         try:
@@ -249,8 +249,9 @@ class SpaceMarketScraper:
             if not self.favorites:
                 raise Exception('収集されたデータがありません')
             df = pd.DataFrame(self.favorites)
-            # Excelファイルに書き込み
-            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+            # メモリ上にExcelファイルを生成
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='お気に入り')
                 # ワークシートを取得
                 worksheet = writer.sheets['お気に入り']
@@ -258,8 +259,9 @@ class SpaceMarketScraper:
                 worksheet.column_dimensions['A'].width = 50  # スペース名
                 worksheet.column_dimensions['B'].width = 60  # URL
                 worksheet.column_dimensions['C'].width = 80  # 全テキスト
+            output.seek(0)
             scraping_status['message'] = f'{len(self.favorites)}件のデータを保存しました！'
-            return filename
+            return output
         except Exception as e:
             scraping_status['error'] = f'Excel保存エラー: {str(e)}'
             raise
