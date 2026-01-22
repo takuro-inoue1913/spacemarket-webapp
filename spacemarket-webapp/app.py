@@ -134,7 +134,7 @@ class SpaceMarketScraper:
             
             # お気に入りページのURLを直接開く
             # 注: 実際のURLは要確認
-            self.driver.get('https://www.spacemarket.com/favorite_lists')
+            self.driver.get('https://www.spacemarket.com/dashboard/favorite_lists/')
             time.sleep(3)
             
             scraping_status['message'] = 'お気に入りページを読み込み中...'
